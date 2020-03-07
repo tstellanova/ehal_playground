@@ -30,7 +30,6 @@ use stm32f3xx_hal as p_hal;
 
 use p_hal::prelude::*;
 use p_hal::stm32;
-use rand_core::RngCore;
 
 use stm32::I2C1;
 
@@ -88,7 +87,7 @@ pub type ImuI2cPortType = p_hal::i2c::I2c<I2C1,
 //     d_println!(get_debug_log(), "IRQn = {}", _irqn);
 // }
 
-type ImuDriverType = bno080::wrapper::BNO080<I2cInterface<ImuI2cPortType>>;
+// type ImuDriverType = bno080::wrapper::BNO080<I2cInterface<ImuI2cPortType>>;
 
 
 // // cortex-m-rt calls this for serious faults.  can set a breakpoint to debug
@@ -167,8 +166,7 @@ fn get_debug_log() -> DebugLog {
 fn setup_peripherals() ->  (
     ImuI2cPortType,
     impl OutputPin + ToggleableOutputPin,
-    impl  DelayMs<u8>,
-    p_hal::rng::Rng
+    impl  DelayMs<u8>
     ) {
 
     let dp = stm32::Peripherals::take().unwrap();
@@ -187,22 +185,12 @@ fn setup_peripherals() ->  (
         .pclk2(36.mhz())
         .freeze();
 
-    // The following will invoke the RNG_CLK assert
-    // let clocks = rcc
-    //     .cfgr
-    //     .use_hse(8_000_000.hz())
-    //     .sysclk(8.mhz())
-    //     .freeze();
-
     let delay_source =  p_hal::delay::Delay::new(cp.SYST, clocks);
 
-
-    let hclk = clocks.hclk();
-    let rng_clk = clocks.pll48clk().unwrap_or(0u32.hz());
-    let pclk1 = clocks.pclk1();
-    d_println!(get_debug_log(), "hclk: {} /16: {} pclk1: {} rng_clk: {}", hclk.0, hclk.0 / 16, pclk1.0, rng_clk.0);
-
-    let rand_source = dp.RNG.constrain(clocks);
+    // let hclk = clocks.hclk();
+    // let rng_clk = clocks.pll48clk().unwrap_or(0u32.hz());
+    // let pclk1 = clocks.pclk1();
+    // d_println!(get_debug_log(), "hclk: {} /16: {} pclk1: {} rng_clk: {}", hclk.0, hclk.0 / 16, pclk1.0, rng_clk.0);
 
     let gpiob = dp.GPIOB.split();
     let gpioc = dp.GPIOC.split();
@@ -224,7 +212,7 @@ fn setup_peripherals() ->  (
         .set_open_drain();
     let i2c_port = p_hal::i2c::I2c::i2c1(dp.I2C1, (scl, sda), 1000.khz(), clocks);
 
-    (i2c_port, user_led1, delay_source, rand_source)
+    (i2c_port, user_led1, delay_source)
 }
 
 // #[cfg(feature = "stm32h7x")]
@@ -280,44 +268,41 @@ const SCREEN_HEIGHT: i32 = 32;
 #[entry]
 fn main() -> ! {
 
-    let (i2c_port, mut user_led1, mut delay_source, mut rand_source) = setup_peripherals();
+    let (i2c_port, mut user_led1, mut delay_source) =
+        setup_peripherals();
     #[cfg(debug_assertions)]
     let mut log = get_debug_log();
     let i2c_bus = shared_bus::CortexMBusManager::new(i2c_port);
-
     let mut disp: GraphicsMode<_> = ssd1306::Builder::new().connect_i2c(i2c_bus.acquire()).into();
     disp.init().unwrap();
     disp.set_rotation(DisplayRotation::Rotate0).unwrap();
     disp.flush().unwrap();
 
-
     // let spi_iface = bno080::interface::SpiInterface::new(
     //     spi_port, csn, hintn, waken, rst);
     // let imu_driver = BNO080::new_with_interface(spi_iface);
 
-    let iface = I2cInterface::new(i2c_bus.acquire(), bno080::interface::i2c::DEFAULT_ADDRESS);
-    let mut imu_driver = BNO080::new_with_interface(iface);
+    let i2c_iface = I2cInterface::new(i2c_bus.acquire(), bno080::interface::i2c::DEFAULT_ADDRESS);
+    let mut imu_driver = BNO080::new_with_interface(i2c_iface);
     // imu_driver.enable_debugging(debug_func);
-    let res = imu_driver.init(delay_source);
+    let res = imu_driver.init(&mut delay_source);
     if res.is_ok() {
-        res = imu_driver.enable_rotation_vector(IMU_REPORTING_INTERVAL_MS);
+        let _ = imu_driver.enable_rotation_vector(100);
     }
 
     let _ = user_led1.set_low();
     d_println!(log, "ready!");
     delay_source.delay_ms(1u8);
 
-    let mut tracker = SensorValueTracker::new(0.1);
-    let mut xpos: i32  = 0;
+    //let mut tracker = SensorValueTracker::new(0.1);
+    //let mut xpos: i32  = 0;
     let mut format_buf = ArrayString::<[u8; 20]>::new();
-    let mut rbuf: [u8; 8] = [0; 8];
 
-    //let mut read_count: i32 = 0;
     loop {
-        let rand_val = rand_source.next_u32();
         imu_driver.handle_one_message();
-
-        //d_println!(log, "{} {:.2}",read_count, _pres);
+        let quat = imu_driver.read_quaternion().unwrap();
+        let qx = quat[0];
+        d_println!(log, "{:?} ",quat);
 
         //clear bar area
         disp.draw( Rect::new(Coord::new(0, 0),
@@ -333,7 +318,7 @@ fn main() -> ! {
 
         //overdraw the label
         format_buf.clear();
-        if fmt::write(&mut format_buf, format_args!("{}", rand_val)).is_ok() {
+        if fmt::write(&mut format_buf, format_args!("{:.4}", qx)).is_ok() {
             disp.draw(
                 Font6x8::render_str(format_buf.as_str())
                     .with_stroke(Some(1u8.into()))
