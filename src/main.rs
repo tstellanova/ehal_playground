@@ -17,7 +17,7 @@ use cortex_m_log::printer::semihosting;
 use cortex_m_log::{println};
 
 #[cfg(debug_assertions)]
-use cortex_m_semihosting::{hprint, hprintln};
+use cortex_m_semihosting::{hprintln};
 
 use cortex_m_log::{d_println};
 use cortex_m_rt::{entry, ExceptionFrame};
@@ -40,20 +40,19 @@ use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::digital::v2::ToggleableOutputPin;
 use embedded_hal::blocking::delay::DelayMs;
 
+// use ssd1306::prelude::*;
+// use embedded_graphics::fonts::Font6x8;
+// use embedded_graphics::prelude::*;
+// use embedded_graphics::primitives::{Rect};
+// use core::fmt;
+// use arrayvec::ArrayString;
 
-use ssd1306::prelude::*;
-use embedded_graphics::fonts::Font6x8;
-use embedded_graphics::prelude::*;
-use embedded_graphics::primitives::{Rect};
 // use cortex_m::asm::bkpt;
+use p_hal::time::{U32Ext, Hertz};
 
-use core::fmt;
-use arrayvec::ArrayString;
-
+/// Sensors
 use bno080::wrapper::BNO080;
 use bno080::interface::{I2cInterface};
-use cortex_m::asm::bkpt;
-use p_hal::time::{KiloHertz, U32Ext, Hertz};
 // use bno080::interface::{SpiInterface};
 use em7180::USFS;
 use bmp280_ehal::{BMP280};
@@ -120,11 +119,10 @@ fn setup_peripherals() -> (
 ) {
     let dp = stm32::Peripherals::take().unwrap();
     let cp = cortex_m::Peripherals::take().unwrap();
-    let I2C_FREQ: Hertz = 400.khz().into();
+    let i2c_freq: Hertz = 400.khz().into();
     // Set up the system clock
     let mut rcc = dp.RCC.constrain();
     let mut flash = dp.FLASH.constrain();
-
 
     // HSI: use default internal oscillator
     //let clocks = rcc.cfgr.freeze(&mut flash.acr);
@@ -134,7 +132,6 @@ fn setup_peripherals() -> (
         .use_hse(8.mhz())
         .sysclk(72.mhz())
         .pclk1(24.mhz())
-        //.pclk2(32.mhz())
         .freeze(&mut flash.acr);
 
     let  delay_source =  p_hal::delay::Delay::new(cp.SYST, clocks);
@@ -158,7 +155,7 @@ fn setup_peripherals() -> (
         .into_af4(&mut gpiob.moder, &mut gpiob.afrh);
 
     let i2c_port = p_hal::i2c::I2c::i2c1(
-        dp.I2C1, (scl, sda), I2C_FREQ, clocks, &mut rcc.apb1);
+        dp.I2C1, (scl, sda), i2c_freq, clocks, &mut rcc.apb1);
 
     (i2c_port, user_led1, delay_source)
 }
@@ -262,12 +259,12 @@ fn setup_peripherals() ->  (
 
 // const LABEL_TEXT_HEIGHT: i32 = 5;
 // const BAR_VERT_INSET: i32 = 5;
-const SCREEN_WIDTH: i32 = 128;
-const SCREEN_HEIGHT: i32 = 32;
+// const SCREEN_WIDTH: i32 = 128;
+// const SCREEN_HEIGHT: i32 = 32;
 // const MAX_BAR_HEIGHT: i32 = (SCREEN_HEIGHT - BAR_VERT_INSET);
-//const MAX_BAR_HEIGHT_F64: f64 = MAX_BAR_HEIGHT as f64;
+// const MAX_BAR_HEIGHT_F64: f64 = MAX_BAR_HEIGHT as f64;
 // const BAR_WIDTH: i32 = 2;
-//const AVG_BAR_HEIGHT: i32 = BAR_VERT_INSET + (MAX_BAR_HEIGHT / 2);
+// const AVG_BAR_HEIGHT: i32 = BAR_VERT_INSET + (MAX_BAR_HEIGHT / 2);
 
 
 
@@ -301,17 +298,16 @@ fn main() -> ! {
     //     spi_port, csn, hintn, waken, rst);
     // let imu_driver = BNO080::new_with_interface(spi_iface);
 
-    // let i2c_iface = I2cInterface::new(i2c_bus.acquire(), bno080::interface::i2c::DEFAULT_ADDRESS);
-    // let mut imu_driver = BNO080::new_with_interface(i2c_iface);
-    //
-    // let res = imu_driver.init(&mut delay_source);
-    // if res.is_ok() {
-    //     let _ = imu_driver.enable_rotation_vector(10);
-    // }
-    // else {
-    //     hprintln!("failed: {:?}", res).unwrap();
-    //     //bkpt();
-    // }
+    let i2c_iface = I2cInterface::new(i2c_bus.acquire(), bno080::interface::i2c::DEFAULT_ADDRESS);
+    let mut imu_driver = BNO080::new_with_interface(i2c_iface);
+
+    let res = imu_driver.init(&mut delay_source);
+    if res.is_ok() {
+        let _ = imu_driver.enable_rotation_vector(10);
+    }
+    else {
+        hprintln!("init failed: {:?}", res).unwrap();
+    }
 
     let _ = user_led1.set_low();
     d_println!(log, "ready!");
@@ -320,7 +316,6 @@ fn main() -> ! {
     //let mut tracker = SensorValueTracker::new(0.1);
     //let mut xpos: i32  = 0;
 
-    let mut qx: f32 = 0.001;
     loop {
         //imu_driver.handle_all_messages(&mut delay_source);
         abs_press = 10.0 * barometer.pressure_one_shot();
@@ -359,7 +354,7 @@ fn main() -> ! {
         // if xpos > SCREEN_WIDTH { xpos = 0; }
 
         let _ = user_led1.toggle();
-        delay_source.delay_ms(200u8);
+        delay_source.delay_ms(100u8);
     }
 
 }
