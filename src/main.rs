@@ -280,8 +280,6 @@ fn main() -> ! {
 
     let mut barometer = BMP280::new(i2c_bus.acquire()).unwrap();
     barometer.reset();
-    let mut abs_press = 10.0 * barometer.pressure_one_shot();
-    hprintln!("press: {:.2}", abs_press).unwrap();
 
     let mut ahrs = USFS::new_inv_usfs_03(i2c_bus.acquire(),
                                          em7180::EM7180_DEFAULT_ADDRESS,
@@ -303,7 +301,8 @@ fn main() -> ! {
 
     let res = imu_driver.init(&mut delay_source);
     if res.is_ok() {
-        let _ = imu_driver.enable_rotation_vector(10);
+        let res2 = imu_driver.enable_rotation_vector(50);
+        hprintln!("rotv: {:?}", res2).unwrap();
     }
     else {
         hprintln!("init failed: {:?}", res).unwrap();
@@ -317,8 +316,8 @@ fn main() -> ! {
     //let mut xpos: i32  = 0;
 
     loop {
-        //imu_driver.handle_all_messages(&mut delay_source);
-        abs_press = 10.0 * barometer.pressure_one_shot();
+        imu_driver.handle_all_messages(&mut delay_source);
+        let abs_press = 10.0 * barometer.pressure_one_shot();
         hprintln!("press: {:.2}", abs_press).unwrap();
 
         if ahrs.quat_available() {
