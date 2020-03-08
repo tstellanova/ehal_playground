@@ -16,6 +16,9 @@ use cortex_m_log::printer::semihosting;
 #[cfg(debug_assertions)]
 use cortex_m_log::{println};
 
+#[cfg(debug_assertions)]
+use cortex_m_semihosting::{hprint, hprintln};
+
 use cortex_m_log::{d_println};
 use cortex_m_rt::{entry, ExceptionFrame};
 
@@ -49,7 +52,11 @@ use arrayvec::ArrayString;
 
 use bno080::wrapper::BNO080;
 use bno080::interface::{I2cInterface};
+use cortex_m::asm::bkpt;
+use p_hal::time::{KiloHertz, U32Ext, Hertz};
 // use bno080::interface::{SpiInterface};
+use em7180::USFS;
+use bmp280_ehal::{BMP280};
 
 #[macro_use]
 extern crate cortex_m_rt;
@@ -61,11 +68,11 @@ type DebugLog = cortex_m_log::printer::semihosting::Semihosting<cortex_m_log::mo
 //type DebugLog = cortex_m_log::printer::itm::Itm<cortex_m_log::modes::InterruptFree>
 
 
-// #[cfg(feature = "stm32f3x")]
-// type ImuI2cPortType = p_hal::i2c::I2c<I2C1,
-//     (p_hal::gpio::gpiob::PB8<p_hal::gpio::AF4>,
-//      p_hal::gpio::gpiob::PB9<p_hal::gpio::AF4>)
-// >;
+#[cfg(feature = "stm32f3x")]
+type ImuI2cPortType = p_hal::i2c::I2c<I2C1,
+    (p_hal::gpio::gpiob::PB8<p_hal::gpio::AF4>,
+     p_hal::gpio::gpiob::PB9<p_hal::gpio::AF4>)
+>;
 
 #[cfg(feature = "stm32f4x")]
 pub type ImuI2cPortType = p_hal::i2c::I2c<I2C1,
@@ -97,10 +104,6 @@ fn HardFault(ef: &ExceptionFrame) -> ! {
 }
 
 
-
-
-
-
 /// Used in debug builds to provide a logging outlet
 #[cfg(debug_assertions)]
 fn get_debug_log() -> DebugLog {
@@ -109,57 +112,56 @@ fn get_debug_log() -> DebugLog {
 }
 
 
-// #[cfg(feature = "stm32f3x")]
-// fn setup_peripherals() -> (
-//     ImuI2cPortType,
-//     impl OutputPin + ToggleableOutputPin,
-//     impl  DelayMs<u8>,
-// ) {
-//     let dp = stm32::Peripherals::take().unwrap();
-//     let cp = cortex_m::Peripherals::take().unwrap();
-//
-//     // Set up the system clock
-//     let mut rcc = dp.RCC.constrain();
-//     let mut flash = dp.FLASH.constrain();
-//
-//     // HSI: use default internal oscillator
-//     //let clocks = rcc.cfgr.freeze(&mut flash.acr);
-//     // HSE: external crystal oscillator must be connected
-//     let clocks = rcc
-//         .cfgr
-//         .use_hse(8_000_000.hz())
-//         .sysclk(72_000_000.hz())
-//         .pclk1(36.mhz())
-//         .pclk2(36.mhz())
-//         .freeze(&mut flash.acr);
-//
-//     let  delay_source =  p_hal::delay::Delay::new(cp.SYST, clocks);
-//
-//     let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
-//     let mut gpioc = dp.GPIOC.split(&mut rcc.ahb);
-//
-//     //stm32f334discovery
-//     // let mut user_led1 = gpiob.pb6.into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
-//     // stm32f303 robodyn
-//     let mut user_led1 = gpioc.pc13.into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper);
-//     user_led1.set_high().unwrap();
-//
-//     // setup i2c1 and imu driver
-//     let scl = gpiob.pb8
-//         .into_open_drain_output(&mut gpiob.moder, &mut gpiob.otyper)
-//         .into_af4(&mut gpiob.moder, &mut gpiob.afrh);
-//
-//     let sda = gpiob.pb9
-//         .into_open_drain_output(&mut gpiob.moder, &mut gpiob.otyper)
-//         .into_af4(&mut gpiob.moder, &mut gpiob.afrh);
-//
-//     let i2c_port = p_hal::i2c::I2c::i2c1(
-//         dp.I2C1, (scl, sda), 1000.khz(), clocks, &mut rcc.apb1);
-//
-//
-//     (i2c_port, user_led1, delay_source)
-//
-// }
+#[cfg(feature = "stm32f3x")]
+fn setup_peripherals() -> (
+    ImuI2cPortType,
+    impl OutputPin + ToggleableOutputPin,
+    impl  DelayMs<u8>,
+) {
+    let dp = stm32::Peripherals::take().unwrap();
+    let cp = cortex_m::Peripherals::take().unwrap();
+    let I2C_FREQ: Hertz = 400.khz().into();
+    // Set up the system clock
+    let mut rcc = dp.RCC.constrain();
+    let mut flash = dp.FLASH.constrain();
+
+
+    // HSI: use default internal oscillator
+    //let clocks = rcc.cfgr.freeze(&mut flash.acr);
+    // HSE: external crystal oscillator must be connected
+    let clocks = rcc
+        .cfgr
+        .use_hse(8.mhz())
+        .sysclk(72.mhz())
+        .pclk1(24.mhz())
+        //.pclk2(32.mhz())
+        .freeze(&mut flash.acr);
+
+    let  delay_source =  p_hal::delay::Delay::new(cp.SYST, clocks);
+
+    let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
+    let mut gpioc = dp.GPIOC.split(&mut rcc.ahb);
+
+    //stm32f334discovery:
+    // let mut user_led1 = gpiob.pb6.into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
+    // stm32f303 robodyn:
+    let mut user_led1 = gpioc.pc13.into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper);
+    user_led1.set_high().unwrap();
+
+    // setup i2c1 and imu driver
+    let scl = gpiob.pb8
+        .into_open_drain_output(&mut gpiob.moder, &mut gpiob.otyper)
+        .into_af4(&mut gpiob.moder, &mut gpiob.afrh);
+
+    let sda = gpiob.pb9
+        .into_open_drain_output(&mut gpiob.moder, &mut gpiob.otyper)
+        .into_af4(&mut gpiob.moder, &mut gpiob.afrh);
+
+    let i2c_port = p_hal::i2c::I2c::i2c1(
+        dp.I2C1, (scl, sda), I2C_FREQ, clocks, &mut rcc.apb1);
+
+    (i2c_port, user_led1, delay_source)
+}
 
 
 #[cfg(feature = "stm32f4x")]
@@ -179,10 +181,10 @@ fn setup_peripherals() ->  (
     // HSE: external crystal oscillator must be connected
     let clocks = rcc
         .cfgr
-        .use_hse(8_000_000.hz())
-        .sysclk(120_000_000.hz())
-        .pclk1(36.mhz())
-        .pclk2(36.mhz())
+        .use_hse(8.mhz()) //f4 discovery board has 8 MHz crystal for HSE
+        .sysclk(128.mhz())
+        .pclk1(48.mhz())
+        // .pclk2(48.mhz())
         .freeze();
 
     let delay_source =  p_hal::delay::Delay::new(cp.SYST, clocks);
@@ -193,9 +195,11 @@ fn setup_peripherals() ->  (
     // d_println!(get_debug_log(), "hclk: {} /16: {} pclk1: {} rng_clk: {}", hclk.0, hclk.0 / 16, pclk1.0, rng_clk.0);
 
     let gpiob = dp.GPIOB.split();
-    let gpioc = dp.GPIOC.split();
+    //let gpioc = dp.GPIOC.split();
+    let gpiod = dp.GPIOD.split();
 
-    let user_led1 = gpioc.pc13.into_push_pull_output(); //f401CxUx
+    //let user_led1 = gpioc.pc13.into_push_pull_output(); //f401CxUx
+    let user_led1 = gpiod.pd12.into_push_pull_output(); //f4discovery
 
     // setup i2c1
     // NOTE: stm32f401CxUx board lacks external pull-ups on i2c pins
@@ -265,6 +269,9 @@ const SCREEN_HEIGHT: i32 = 32;
 // const BAR_WIDTH: i32 = 2;
 //const AVG_BAR_HEIGHT: i32 = BAR_VERT_INSET + (MAX_BAR_HEIGHT / 2);
 
+
+
+
 #[entry]
 fn main() -> ! {
 
@@ -273,22 +280,38 @@ fn main() -> ! {
     #[cfg(debug_assertions)]
     let mut log = get_debug_log();
     let i2c_bus = shared_bus::CortexMBusManager::new(i2c_port);
-    let mut disp: GraphicsMode<_> = ssd1306::Builder::new().connect_i2c(i2c_bus.acquire()).into();
-    disp.init().unwrap();
-    disp.set_rotation(DisplayRotation::Rotate0).unwrap();
-    disp.flush().unwrap();
+
+    let mut barometer = BMP280::new(i2c_bus.acquire()).unwrap();
+    barometer.reset();
+    let mut abs_press = 10.0 * barometer.pressure_one_shot();
+    hprintln!("press: {:.2}", abs_press).unwrap();
+
+    let mut ahrs = USFS::new_inv_usfs_03(i2c_bus.acquire(),
+                                         em7180::EM7180_DEFAULT_ADDRESS,
+                                         0, //unused for now
+                                         false).unwrap();
+
+    // let mut format_buf = ArrayString::<[u8; 20]>::new();
+    // let mut disp: GraphicsMode<_> = ssd1306::Builder::new().connect_i2c(i2c_bus.acquire()).into();
+    // disp.init().unwrap();
+    // disp.set_rotation(DisplayRotation::Rotate0).unwrap();
+    // disp.flush().unwrap();
 
     // let spi_iface = bno080::interface::SpiInterface::new(
     //     spi_port, csn, hintn, waken, rst);
     // let imu_driver = BNO080::new_with_interface(spi_iface);
 
-    let i2c_iface = I2cInterface::new(i2c_bus.acquire(), bno080::interface::i2c::DEFAULT_ADDRESS);
-    let mut imu_driver = BNO080::new_with_interface(i2c_iface);
-    // imu_driver.enable_debugging(debug_func);
-    let res = imu_driver.init(&mut delay_source);
-    if res.is_ok() {
-        let _ = imu_driver.enable_rotation_vector(100);
-    }
+    // let i2c_iface = I2cInterface::new(i2c_bus.acquire(), bno080::interface::i2c::DEFAULT_ADDRESS);
+    // let mut imu_driver = BNO080::new_with_interface(i2c_iface);
+    //
+    // let res = imu_driver.init(&mut delay_source);
+    // if res.is_ok() {
+    //     let _ = imu_driver.enable_rotation_vector(10);
+    // }
+    // else {
+    //     hprintln!("failed: {:?}", res).unwrap();
+    //     //bkpt();
+    // }
 
     let _ = user_led1.set_low();
     d_println!(log, "ready!");
@@ -296,44 +319,47 @@ fn main() -> ! {
 
     //let mut tracker = SensorValueTracker::new(0.1);
     //let mut xpos: i32  = 0;
-    let mut format_buf = ArrayString::<[u8; 20]>::new();
 
+    let mut qx: f32 = 0.001;
     loop {
-        imu_driver.handle_one_message();
-        let quat = imu_driver.read_quaternion().unwrap();
-        let qx = quat[0];
-        d_println!(log, "{:?} ",quat);
+        //imu_driver.handle_all_messages(&mut delay_source);
+        abs_press = 10.0 * barometer.pressure_one_shot();
+        hprintln!("press: {:.2}", abs_press).unwrap();
 
-        //clear bar area
-        disp.draw( Rect::new(Coord::new(0, 0),
-                             Coord::new(SCREEN_WIDTH, SCREEN_HEIGHT))
-            .with_fill(Some(0u8.into())).into_iter());
-        //
-        // //d_println!(log, "{:.2} / {:.2} ", abs_press, avg_press);
-        // let ypix = (MAX_BAR_HEIGHT * rand_val) / core::i32::MAX;
-        // let ypos = MAX_BAR_HEIGHT - ypix;
-        //
-        // // draw new bar
-        // disp.draw( Rect::new(Coord::new(xpos, ypos), Coord::new(xpos + BAR_WIDTH, SCREEN_HEIGHT)).with_fill(Some(1u8.into())).into_iter());
-
-        //overdraw the label
-        format_buf.clear();
-        if fmt::write(&mut format_buf, format_args!("{:.4}", qx)).is_ok() {
-            disp.draw(
-                Font6x8::render_str(format_buf.as_str())
-                    .with_stroke(Some(1u8.into()))
-                    .translate(Coord::new(20, SCREEN_HEIGHT  / 2))
-                    .into_iter(),
-            );
+        if ahrs.quat_available() {
+            let quat = ahrs.read_sentral_quat_qata().unwrap();
+            let qx = quat[0];
+            hprintln!("qx: {:.2}", qx).unwrap();
         }
-        disp.flush().unwrap();
+
+        //let quat = imu_driver.read_quaternion().unwrap();
+        //let qx = quat[0];
+        //d_println!(log, "{:.6} ",qx);
+        //clear bar area
+
+        // qx += 0.001;
+        //
+        // disp.draw( Rect::new(Coord::new(0, 0),
+        //                      Coord::new(SCREEN_WIDTH, SCREEN_HEIGHT))
+        //     .with_fill(Some(0u8.into())).into_iter());
+        //
+        // //overdraw the label
+        // format_buf.clear();
+        // if fmt::write(&mut format_buf, format_args!("{:.6}", qx)).is_ok() {
+        //     disp.draw(
+        //         Font6x8::render_str(format_buf.as_str())
+        //             .with_stroke(Some(1u8.into()))
+        //             .translate(Coord::new(20, SCREEN_HEIGHT  / 2))
+        //             .into_iter(),
+        //     );
+        // }
+        // disp.flush().unwrap();
 
         // xpos = xpos + BAR_WIDTH;
         // if xpos > SCREEN_WIDTH { xpos = 0; }
 
-
         let _ = user_led1.toggle();
-        delay_source.delay_ms(250u8);
+        delay_source.delay_ms(200u8);
     }
 
 }
