@@ -56,6 +56,7 @@ use bno080::interface::{I2cInterface};
 // use bno080::interface::{SpiInterface};
 use em7180::USFS;
 use bmp280_ehal::{BMP280};
+use cortex_m::asm::bkpt;
 
 #[macro_use]
 extern crate cortex_m_rt;
@@ -130,8 +131,8 @@ fn setup_peripherals() -> (
     let clocks = rcc
         .cfgr
         .use_hse(8.mhz())
-        .sysclk(72.mhz())
-        .pclk1(24.mhz())
+        .sysclk(72.mhz()) //72 works
+        .pclk1(24.mhz()) // 24 works
         .freeze(&mut flash.acr);
 
     let  delay_source =  p_hal::delay::Delay::new(cp.SYST, clocks);
@@ -306,6 +307,7 @@ fn main() -> ! {
     }
     else {
         hprintln!("init failed: {:?}", res).unwrap();
+        bkpt();
     }
 
     let _ = user_led1.set_low();
