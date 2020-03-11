@@ -302,7 +302,7 @@ fn main() -> ! {
 
     let res = imu_driver.init(&mut delay_source);
     if res.is_ok() {
-        let res2 = imu_driver.enable_rotation_vector(50);
+        let res2 = imu_driver.enable_rotation_vector(1000);
         hprintln!("rotv: {:?}", res2).unwrap();
     }
     else {
@@ -319,14 +319,17 @@ fn main() -> ! {
 
     loop {
         imu_driver.handle_all_messages(&mut delay_source);
-        let abs_press = 10.0 * barometer.pressure_one_shot();
-        hprintln!("press: {:.2}", abs_press).unwrap();
+        let hacc = imu_driver.heading_accuracy();
+        let quat = imu_driver.rotation_quaternion().unwrap();
+        hprintln!("b_q: {:.2}, {:.2} {:.2} {:.2} | {:.2}", quat[0], quat[1], quat[2], quat[3], hacc).unwrap();
 
-        if ahrs.quat_available() {
-            let quat = ahrs.read_sentral_quat_qata().unwrap();
-            let qx = quat[0];
-            hprintln!("qx: {:.2}", qx).unwrap();
-        }
+        //let abs_press = 10.0 * barometer.pressure_one_shot();
+        //hprintln!("press: {:.2}", abs_press).unwrap();
+
+        // if ahrs.quat_available() {
+        //     let quat = ahrs.read_sentral_quat_qata().unwrap();
+        //     hprintln!("e_q: {:.2}, {:.2} {:.2} {:.2}", quat[0], quat[1], quat[2], quat[3]).unwrap();
+        // }
 
         //let quat = imu_driver.read_quaternion().unwrap();
         //let qx = quat[0];
@@ -355,7 +358,7 @@ fn main() -> ! {
         // if xpos > SCREEN_WIDTH { xpos = 0; }
 
         let _ = user_led1.toggle();
-        delay_source.delay_ms(100u8);
+        delay_source.delay_ms(1u8);
     }
 
 }
