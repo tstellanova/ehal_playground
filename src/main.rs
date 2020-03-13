@@ -292,6 +292,8 @@ fn main() -> ! {
     // disp.init().unwrap();
     // disp.set_rotation(DisplayRotation::Rotate0).unwrap();
     // disp.flush().unwrap();
+    // let disp_clear_rect = Rect::new(Coord::new(0, 0),
+    //                            Coord::new(SCREEN_WIDTH, SCREEN_HEIGHT));
 
     // let spi_iface = bno080::interface::SpiInterface::new(
     //     spi_port, csn, hintn, waken, rst);
@@ -319,17 +321,19 @@ fn main() -> ! {
 
     loop {
         imu_driver.handle_all_messages(&mut delay_source);
-        let hacc = imu_driver.heading_accuracy();
+        //let hacc = imu_driver.heading_accuracy();
         let quat = imu_driver.rotation_quaternion().unwrap();
-        hprintln!("b_q: {:.2}, {:.2} {:.2} {:.2} | {:.2}", quat[0], quat[1], quat[2], quat[3], hacc).unwrap();
+        // hprintln!("b_q: {:.4}, {:.4} {:.4} {:.4} | {:.6}", quat[0], quat[1], quat[2], quat[3], hacc).unwrap();
+        hprintln!("b_qi: {:.6}", quat[0]).unwrap();
 
-        //let abs_press = 10.0 * barometer.pressure_one_shot();
+        let _abs_press = 10.0 * barometer.pressure_one_shot();
         //hprintln!("press: {:.2}", abs_press).unwrap();
 
-        // if ahrs.quat_available() {
-        //     let quat = ahrs.read_sentral_quat_qata().unwrap();
-        //     hprintln!("e_q: {:.2}, {:.2} {:.2} {:.2}", quat[0], quat[1], quat[2], quat[3]).unwrap();
-        // }
+        if ahrs.quat_available() {
+            let quat = ahrs.read_sentral_quat_qata().unwrap();
+            // hprintln!("e_q: {:.2}, {:.2} {:.2} {:.2}", quat[0], quat[1], quat[2], quat[3]).unwrap();
+            hprintln!("e_qi: {:.6}", quat[0]).unwrap();
+        }
 
         //let quat = imu_driver.read_quaternion().unwrap();
         //let qx = quat[0];
@@ -338,13 +342,13 @@ fn main() -> ! {
 
         // qx += 0.001;
         //
-        // disp.draw( Rect::new(Coord::new(0, 0),
-        //                      Coord::new(SCREEN_WIDTH, SCREEN_HEIGHT))
-        //     .with_fill(Some(0u8.into())).into_iter());
-        //
-        // //overdraw the label
+        // disp.draw( disp_clear_rect)
+        //     .with_fill(Some(0u8.into()))
+        //     .into_iter();
+
+        //overdraw the label
         // format_buf.clear();
-        // if fmt::write(&mut format_buf, format_args!("{:.6}", qx)).is_ok() {
+        // if fmt::write(&mut format_buf, format_args!("{:.6}", quat[0])).is_ok() {
         //     disp.draw(
         //         Font6x8::render_str(format_buf.as_str())
         //             .with_stroke(Some(1u8.into()))
@@ -358,7 +362,7 @@ fn main() -> ! {
         // if xpos > SCREEN_WIDTH { xpos = 0; }
 
         let _ = user_led1.toggle();
-        delay_source.delay_ms(1u8);
+        delay_source.delay_ms(100u8);
     }
 
 }
