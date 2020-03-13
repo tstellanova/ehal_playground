@@ -40,12 +40,12 @@ use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::digital::v2::ToggleableOutputPin;
 use embedded_hal::blocking::delay::DelayMs;
 
-// use ssd1306::prelude::*;
-// use embedded_graphics::fonts::Font6x8;
-// use embedded_graphics::prelude::*;
-// use embedded_graphics::primitives::{Rect};
-// use core::fmt;
-// use arrayvec::ArrayString;
+use ssd1306::prelude::*;
+use embedded_graphics::fonts::Font6x8;
+use embedded_graphics::prelude::*;
+use embedded_graphics::primitives::{Rect};
+use core::fmt;
+use arrayvec::ArrayString;
 
 // use cortex_m::asm::bkpt;
 use p_hal::time::{U32Ext, Hertz};
@@ -217,51 +217,52 @@ fn setup_peripherals() ->  (
     (i2c_port, user_led1, delay_source)
 }
 
-// #[cfg(feature = "stm32h7x")]
-// fn setup_peripherals() ->  (
-//     ImuI2cPortType,
-//     impl OutputPin + ToggleableOutputPin,
-//     impl  DelayMs<u8>,
-// ) {
-//     let dp = stm32::Peripherals::take().unwrap();
-//     let cp = cortex_m::Peripherals::take().unwrap();
-//
-//
-//     // Set up the system clock
-//     let rcc = dp.RCC.constrain();
-//
-//     let pwr = dp.PWR.constrain();
-//     let vos = pwr.freeze();
-//
-//     //use the existing sysclk
-//     let mut ccdr = rcc.freeze(vos, &dp.SYSCFG);
-//     let clocks = ccdr.clocks;
-//
-//     let delay_source =  p_hal::delay::Delay::new(cp.SYST, clocks);
-//
-//     let gpiob = dp.GPIOB.split(&mut ccdr.ahb4);
-//
-//     let user_led1 = gpiob.pb0.into_push_pull_output(); //h743 discovery
-//
-//
-//     // setup i2c1
-//     // NOTE:  f407 discovery board already has external pull-ups
-//     let scl = gpiob.pb8
-//         .into_alternate_af4()
-//         .set_open_drain();
-//
-//     let sda = gpiob.pb9
-//         .into_alternate_af4()
-//         .set_open_drain();
-//     let i2c_port = p_hal::i2c::I2c::i2c1(dp.I2C1, (scl, sda), 400.khz(), &ccdr);
-//
-//     (i2c_port, user_led1, delay_source)
-// }
+#[cfg(feature = "stm32h7x")]
+fn setup_peripherals() ->  (
+    ImuI2cPortType,
+    impl OutputPin + ToggleableOutputPin,
+    impl  DelayMs<u8>,
+) {
+    let dp = stm32::Peripherals::take().unwrap();
+    let cp = cortex_m::Peripherals::take().unwrap();
+
+
+    // Set up the system clock
+    let rcc = dp.RCC.constrain();
+
+    let pwr = dp.PWR.constrain();
+    let vos = pwr.freeze();
+
+    //use the existing sysclk
+    let mut ccdr = rcc.freeze(vos, &dp.SYSCFG);
+    let clocks = ccdr.clocks;
+
+    let delay_source =  p_hal::delay::Delay::new(cp.SYST, clocks);
+
+    let gpiob = dp.GPIOB.split(&mut ccdr.ahb4);
+
+    let user_led1 = gpiob.pb0.into_push_pull_output(); //h743 discovery
+
+    // TODO setup i2c1
+    // NOTE:  h743 discovery board already has external pull-ups?
+    let scl = gpiob.pb8
+        .into_alternate_af4()
+        // .internal_pull_up(true)
+        .set_open_drain();
+
+    let sda = gpiob.pb9
+        .into_alternate_af4()
+        // .internal_pull_up(true)
+        .set_open_drain();
+    let i2c_port = p_hal::i2c::I2c::i2c1(dp.I2C1, (scl, sda), 400.khz(), &ccdr);
+
+    (i2c_port, user_led1, delay_source)
+}
 
 // const LABEL_TEXT_HEIGHT: i32 = 5;
 // const BAR_VERT_INSET: i32 = 5;
-// const SCREEN_WIDTH: i32 = 128;
-// const SCREEN_HEIGHT: i32 = 32;
+const SCREEN_WIDTH: i32 = 128;
+const SCREEN_HEIGHT: i32 = 32;
 // const MAX_BAR_HEIGHT: i32 = (SCREEN_HEIGHT - BAR_VERT_INSET);
 // const MAX_BAR_HEIGHT_F64: f64 = MAX_BAR_HEIGHT as f64;
 // const BAR_WIDTH: i32 = 2;
@@ -281,17 +282,17 @@ fn main() -> ! {
 
     let mut barometer = BMP280::new(i2c_bus.acquire()).unwrap();
     barometer.reset();
+    //
+    // let mut ahrs = USFS::new_inv_usfs_03(i2c_bus.acquire(),
+    //                                      em7180::EM7180_DEFAULT_ADDRESS,
+    //                                      0, //unused for now
+    //                                      false).unwrap();
 
-    let mut ahrs = USFS::new_inv_usfs_03(i2c_bus.acquire(),
-                                         em7180::EM7180_DEFAULT_ADDRESS,
-                                         0, //unused for now
-                                         false).unwrap();
-
-    // let mut format_buf = ArrayString::<[u8; 20]>::new();
-    // let mut disp: GraphicsMode<_> = ssd1306::Builder::new().connect_i2c(i2c_bus.acquire()).into();
-    // disp.init().unwrap();
-    // disp.set_rotation(DisplayRotation::Rotate0).unwrap();
-    // disp.flush().unwrap();
+    let mut format_buf = ArrayString::<[u8; 20]>::new();
+    let mut disp: GraphicsMode<_> = ssd1306::Builder::new().connect_i2c(i2c_bus.acquire()).into();
+    disp.init().unwrap();
+    disp.set_rotation(DisplayRotation::Rotate0).unwrap();
+    disp.flush().unwrap();
     // let disp_clear_rect = Rect::new(Coord::new(0, 0),
     //                            Coord::new(SCREEN_WIDTH, SCREEN_HEIGHT));
 
@@ -304,10 +305,12 @@ fn main() -> ! {
 
     let res = imu_driver.init(&mut delay_source);
     if res.is_ok() {
-        let res2 = imu_driver.enable_rotation_vector(1000);
-        hprintln!("rotv: {:?}", res2).unwrap();
+        let _res2 = imu_driver.enable_rotation_vector(1000);
+        #[cfg(debug_assertions)]
+        hprintln!("rotv: {:?}", _res2).unwrap();
     }
     else {
+        #[cfg(debug_assertions)]
         hprintln!("init failed: {:?}", res).unwrap();
         bkpt();
     }
@@ -321,42 +324,33 @@ fn main() -> ! {
 
     loop {
         imu_driver.handle_all_messages(&mut delay_source);
-        //let hacc = imu_driver.heading_accuracy();
+        let hacc = imu_driver.heading_accuracy();
         let quat = imu_driver.rotation_quaternion().unwrap();
-        // hprintln!("b_q: {:.4}, {:.4} {:.4} {:.4} | {:.6}", quat[0], quat[1], quat[2], quat[3], hacc).unwrap();
-        hprintln!("b_qi: {:.6}", quat[0]).unwrap();
+        #[cfg(debug_assertions)]
+        hprintln!("b_q: {:.6}, {:.6} {:.6} {:.6} | {:.6}", quat[0], quat[1], quat[2], quat[3], hacc).unwrap();
+        //hprintln!("b_qi: {:.6}", quat[0]).unwrap();
 
-        let _abs_press = 10.0 * barometer.pressure_one_shot();
-        //hprintln!("press: {:.2}", abs_press).unwrap();
+        let abs_press = 10.0 * barometer.pressure_one_shot();
+        #[cfg(debug_assertions)]
+        hprintln!("press: {:.2}", abs_press).unwrap();
 
-        if ahrs.quat_available() {
-            let quat = ahrs.read_sentral_quat_qata().unwrap();
-            // hprintln!("e_q: {:.2}, {:.2} {:.2} {:.2}", quat[0], quat[1], quat[2], quat[3]).unwrap();
-            hprintln!("e_qi: {:.6}", quat[0]).unwrap();
-        }
-
-        //let quat = imu_driver.read_quaternion().unwrap();
-        //let qx = quat[0];
-        //d_println!(log, "{:.6} ",qx);
-        //clear bar area
-
-        // qx += 0.001;
-        //
-        // disp.draw( disp_clear_rect)
-        //     .with_fill(Some(0u8.into()))
-        //     .into_iter();
+        // if ahrs.quat_available() {
+        //     let quat = ahrs.read_sentral_quat_qata().unwrap();
+        //     // hprintln!("e_q: {:.2}, {:.2} {:.2} {:.2}", quat[0], quat[1], quat[2], quat[3]).unwrap();
+        //     hprintln!("e_qi: {:.6}", quat[0]).unwrap();
+        // }
 
         //overdraw the label
-        // format_buf.clear();
-        // if fmt::write(&mut format_buf, format_args!("{:.6}", quat[0])).is_ok() {
-        //     disp.draw(
-        //         Font6x8::render_str(format_buf.as_str())
-        //             .with_stroke(Some(1u8.into()))
-        //             .translate(Coord::new(20, SCREEN_HEIGHT  / 2))
-        //             .into_iter(),
-        //     );
-        // }
-        // disp.flush().unwrap();
+        format_buf.clear();
+        if fmt::write(&mut format_buf, format_args!("{:.6}", quat[0])).is_ok() {
+            disp.draw(
+                Font6x8::render_str(format_buf.as_str())
+                    .with_stroke(Some(1u8.into()))
+                    .translate(Coord::new(20, SCREEN_HEIGHT  / 2))
+                    .into_iter(),
+            );
+        }
+        disp.flush().unwrap();
 
         // xpos = xpos + BAR_WIDTH;
         // if xpos > SCREEN_WIDTH { xpos = 0; }
