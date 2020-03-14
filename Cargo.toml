@@ -26,6 +26,8 @@ bno080 = { path = "../BNO080" }
 #bno080 = { git = "https://github.com/tstellanova/bno080.git" }
 bmp280-ehal = "0.0.3"
 em7180 = { git = "https://github.com/tstellanova/em7180-rs" }
+ms5611-spi = { version ="0.1.0" }
+
 
 
 # stm32 family specialization:
