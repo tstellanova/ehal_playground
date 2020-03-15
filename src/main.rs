@@ -14,12 +14,12 @@ extern crate panic_semihosting; // logs messages to the host stderr; requires a 
 use cortex_m_log::printer::semihosting;
 
 #[cfg(debug_assertions)]
-use cortex_m_log::{println};
+use cortex_m_log::println;
 
 #[cfg(debug_assertions)]
-use cortex_m_semihosting::{hprintln};
+use cortex_m_semihosting::hprintln;
 
-use cortex_m_log::{d_println};
+use cortex_m_log::d_println;
 use cortex_m_rt::{entry, ExceptionFrame};
 
 #[cfg(feature = "stm32h7x")]
@@ -36,54 +36,64 @@ use p_hal::stm32;
 
 use stm32::I2C1;
 
+use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::digital::v2::ToggleableOutputPin;
-use embedded_hal::blocking::delay::DelayMs;
 
-use ssd1306::prelude::*;
+use arrayvec::ArrayString;
+use core::fmt;
 use embedded_graphics::fonts::Font6x8;
 use embedded_graphics::prelude::*;
-use embedded_graphics::primitives::{Rect};
-use core::fmt;
-use arrayvec::ArrayString;
+use embedded_graphics::primitives::Rect;
+use ssd1306::prelude::*;
 
 // use cortex_m::asm::bkpt;
-use p_hal::time::{U32Ext, Hertz};
+use p_hal::time::{Hertz, U32Ext};
 
+use bno080::interface::I2cInterface;
 /// Sensors
 use bno080::wrapper::BNO080;
-use bno080::interface::{I2cInterface};
 // use bno080::interface::{SpiInterface};
-use em7180::USFS;
-use bmp280_ehal::{BMP280};
+use bmp280_ehal::BMP280;
 use cortex_m::asm::bkpt;
+use em7180::USFS;
 
 #[macro_use]
 extern crate cortex_m_rt;
 
-
 #[cfg(debug_assertions)]
 // type DebugLog = cortex_m_log::printer::dummy::Dummy;
-type DebugLog = cortex_m_log::printer::semihosting::Semihosting<cortex_m_log::modes::InterruptFree, cortex_m_semihosting::hio::HStdout>;
+type DebugLog = cortex_m_log::printer::semihosting::Semihosting<
+    cortex_m_log::modes::InterruptFree,
+    cortex_m_semihosting::hio::HStdout,
+>;
 //type DebugLog = cortex_m_log::printer::itm::Itm<cortex_m_log::modes::InterruptFree>
 
-
 #[cfg(feature = "stm32f3x")]
-type ImuI2cPortType = p_hal::i2c::I2c<I2C1,
-    (p_hal::gpio::gpiob::PB8<p_hal::gpio::AF4>,
-     p_hal::gpio::gpiob::PB9<p_hal::gpio::AF4>)
+type ImuI2cPortType = p_hal::i2c::I2c<
+    I2C1,
+    (
+        p_hal::gpio::gpiob::PB8<p_hal::gpio::AF4>,
+        p_hal::gpio::gpiob::PB9<p_hal::gpio::AF4>,
+    ),
 >;
 
 #[cfg(feature = "stm32f4x")]
-pub type ImuI2cPortType = p_hal::i2c::I2c<I2C1,
-    (p_hal::gpio::gpiob::PB8<p_hal::gpio::AlternateOD<p_hal::gpio::AF4>>,
-     p_hal::gpio::gpiob::PB9<p_hal::gpio::AlternateOD<p_hal::gpio::AF4>>)
+pub type ImuI2cPortType = p_hal::i2c::I2c<
+    I2C1,
+    (
+        p_hal::gpio::gpiob::PB8<p_hal::gpio::AlternateOD<p_hal::gpio::AF4>>,
+        p_hal::gpio::gpiob::PB9<p_hal::gpio::AlternateOD<p_hal::gpio::AF4>>,
+    ),
 >;
 
 #[cfg(feature = "stm32h7x")]
-pub type ImuI2cPortType = p_hal::i2c::I2c<I2C1,
-    (p_hal::gpio::gpiob::PB8<p_hal::gpio::Alternate<p_hal::gpio::AF4>>,
-     p_hal::gpio::gpiob::PB9<p_hal::gpio::Alternate<p_hal::gpio::AF4>>)
+pub type ImuI2cPortType = p_hal::i2c::I2c<
+    I2C1,
+    (
+        p_hal::gpio::gpiob::PB8<p_hal::gpio::Alternate<p_hal::gpio::AF4>>,
+        p_hal::gpio::gpiob::PB9<p_hal::gpio::Alternate<p_hal::gpio::AF4>>,
+    ),
 >;
 
 // cortex-m-rt is setup to call DefaultHandler for a number of fault conditions
@@ -96,13 +106,11 @@ pub type ImuI2cPortType = p_hal::i2c::I2c<I2C1,
 
 // type ImuDriverType = bno080::wrapper::BNO080<I2cInterface<ImuI2cPortType>>;
 
-
 // // cortex-m-rt calls this for serious faults.  can set a breakpoint to debug
 #[exception]
 fn HardFault(ef: &ExceptionFrame) -> ! {
     panic!("{:#?}", ef);
 }
-
 
 /// Used in debug builds to provide a logging outlet
 #[cfg(debug_assertions)]
@@ -111,12 +119,11 @@ fn get_debug_log() -> DebugLog {
     semihosting::InterruptFree::<_>::stdout().unwrap()
 }
 
-
 #[cfg(feature = "stm32f3x")]
 fn setup_peripherals() -> (
     ImuI2cPortType,
     impl OutputPin + ToggleableOutputPin,
-    impl  DelayMs<u8>,
+    impl DelayMs<u8>,
 ) {
     let dp = stm32::Peripherals::take().unwrap();
     let cp = cortex_m::Peripherals::take().unwrap();
@@ -135,7 +142,7 @@ fn setup_peripherals() -> (
         .pclk1(24.mhz()) // 24 works
         .freeze(&mut flash.acr);
 
-    let  delay_source =  p_hal::delay::Delay::new(cp.SYST, clocks);
+    let delay_source = p_hal::delay::Delay::new(cp.SYST, clocks);
 
     let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
     let mut gpioc = dp.GPIOC.split(&mut rcc.ahb);
@@ -143,32 +150,33 @@ fn setup_peripherals() -> (
     //stm32f334discovery:
     // let mut user_led1 = gpiob.pb6.into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
     // stm32f303 robodyn:
-    let mut user_led1 = gpioc.pc13.into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper);
+    let mut user_led1 = gpioc
+        .pc13
+        .into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper);
     user_led1.set_high().unwrap();
 
     // setup i2c1 and imu driver
-    let scl = gpiob.pb8
+    let scl = gpiob
+        .pb8
         .into_open_drain_output(&mut gpiob.moder, &mut gpiob.otyper)
         .into_af4(&mut gpiob.moder, &mut gpiob.afrh);
 
-    let sda = gpiob.pb9
+    let sda = gpiob
+        .pb9
         .into_open_drain_output(&mut gpiob.moder, &mut gpiob.otyper)
         .into_af4(&mut gpiob.moder, &mut gpiob.afrh);
 
-    let i2c_port = p_hal::i2c::I2c::i2c1(
-        dp.I2C1, (scl, sda), i2c_freq, clocks, &mut rcc.apb1);
+    let i2c_port = p_hal::i2c::I2c::i2c1(dp.I2C1, (scl, sda), i2c_freq, clocks, &mut rcc.apb1);
 
     (i2c_port, user_led1, delay_source)
 }
 
-
 #[cfg(feature = "stm32f4x")]
-fn setup_peripherals() ->  (
+fn setup_peripherals() -> (
     ImuI2cPortType,
     impl OutputPin + ToggleableOutputPin,
-    impl  DelayMs<u8>
-    ) {
-
+    impl DelayMs<u8>,
+) {
     let dp = stm32::Peripherals::take().unwrap();
     let cp = cortex_m::Peripherals::take().unwrap();
 
@@ -185,7 +193,7 @@ fn setup_peripherals() ->  (
         // .pclk2(48.mhz())
         .freeze();
 
-    let delay_source =  p_hal::delay::Delay::new(cp.SYST, clocks);
+    let delay_source = p_hal::delay::Delay::new(cp.SYST, clocks);
 
     // let hclk = clocks.hclk();
     // let rng_clk = clocks.pll48clk().unwrap_or(0u32.hz());
@@ -203,12 +211,14 @@ fn setup_peripherals() ->  (
     // NOTE: stm32f401CxUx board lacks external pull-ups on i2c pins
     // NOTE: eg f407 discovery board already has external pull-ups
     // NOTE: sensor breakout boards may have their own pull-ups: check carefully
-    let scl = gpiob.pb8
+    let scl = gpiob
+        .pb8
         .into_alternate_af4()
         //.internal_pull_up(true)
         .set_open_drain();
 
-    let sda = gpiob.pb9
+    let sda = gpiob
+        .pb9
         .into_alternate_af4()
         //.internal_pull_up(true)
         .set_open_drain();
@@ -218,14 +228,13 @@ fn setup_peripherals() ->  (
 }
 
 #[cfg(feature = "stm32h7x")]
-fn setup_peripherals() ->  (
+fn setup_peripherals() -> (
     ImuI2cPortType,
     impl OutputPin + ToggleableOutputPin,
-    impl  DelayMs<u8>,
+    impl DelayMs<u8>,
 ) {
     let dp = stm32::Peripherals::take().unwrap();
     let cp = cortex_m::Peripherals::take().unwrap();
-
 
     // Set up the system clock
     let rcc = dp.RCC.constrain();
@@ -237,7 +246,7 @@ fn setup_peripherals() ->  (
     let mut ccdr = rcc.freeze(vos, &dp.SYSCFG);
     let clocks = ccdr.clocks;
 
-    let delay_source =  p_hal::delay::Delay::new(cp.SYST, clocks);
+    let delay_source = p_hal::delay::Delay::new(cp.SYST, clocks);
 
     let gpiob = dp.GPIOB.split(&mut ccdr.ahb4);
 
@@ -245,12 +254,14 @@ fn setup_peripherals() ->  (
 
     // TODO setup i2c1
     // NOTE:  h743 discovery board already has external pull-ups?
-    let scl = gpiob.pb8
+    let scl = gpiob
+        .pb8
         .into_alternate_af4()
         // .internal_pull_up(true)
         .set_open_drain();
 
-    let sda = gpiob.pb9
+    let sda = gpiob
+        .pb9
         .into_alternate_af4()
         // .internal_pull_up(true)
         .set_open_drain();
@@ -268,14 +279,9 @@ const SCREEN_HEIGHT: i32 = 32;
 // const BAR_WIDTH: i32 = 2;
 // const AVG_BAR_HEIGHT: i32 = BAR_VERT_INSET + (MAX_BAR_HEIGHT / 2);
 
-
-
-
 #[entry]
 fn main() -> ! {
-
-    let (i2c_port, mut user_led1, mut delay_source) =
-        setup_peripherals();
+    let (i2c_port, mut user_led1, mut delay_source) = setup_peripherals();
     #[cfg(debug_assertions)]
     let mut log = get_debug_log();
     let i2c_bus = shared_bus::CortexMBusManager::new(i2c_port);
@@ -289,7 +295,9 @@ fn main() -> ! {
     //                                      false).unwrap();
 
     let mut format_buf = ArrayString::<[u8; 20]>::new();
-    let mut disp: GraphicsMode<_> = ssd1306::Builder::new().connect_i2c(i2c_bus.acquire()).into();
+    let mut disp: GraphicsMode<_> = ssd1306::Builder::new()
+        .connect_i2c(i2c_bus.acquire())
+        .into();
     disp.init().unwrap();
     disp.set_rotation(DisplayRotation::Rotate0).unwrap();
     disp.flush().unwrap();
@@ -308,8 +316,7 @@ fn main() -> ! {
         let _res2 = imu_driver.enable_rotation_vector(1000);
         #[cfg(debug_assertions)]
         hprintln!("rotv: {:?}", _res2).unwrap();
-    }
-    else {
+    } else {
         #[cfg(debug_assertions)]
         hprintln!("init failed: {:?}", res).unwrap();
         bkpt();
@@ -327,7 +334,15 @@ fn main() -> ! {
         let hacc = imu_driver.heading_accuracy();
         let quat = imu_driver.rotation_quaternion().unwrap();
         #[cfg(debug_assertions)]
-        hprintln!("b_q: {:.6}, {:.6} {:.6} {:.6} | {:.6}", quat[0], quat[1], quat[2], quat[3], hacc).unwrap();
+        hprintln!(
+            "b_q: {:.6}, {:.6} {:.6} {:.6} | {:.6}",
+            quat[0],
+            quat[1],
+            quat[2],
+            quat[3],
+            hacc
+        )
+        .unwrap();
         //hprintln!("b_qi: {:.6}", quat[0]).unwrap();
 
         let abs_press = 10.0 * barometer.pressure_one_shot();
@@ -346,7 +361,7 @@ fn main() -> ! {
             disp.draw(
                 Font6x8::render_str(format_buf.as_str())
                     .with_stroke(Some(1u8.into()))
-                    .translate(Coord::new(20, SCREEN_HEIGHT  / 2))
+                    .translate(Coord::new(20, SCREEN_HEIGHT / 2))
                     .into_iter(),
             );
         }
@@ -358,9 +373,7 @@ fn main() -> ! {
         let _ = user_led1.toggle();
         delay_source.delay_ms(100u8);
     }
-
 }
-
 
 /// Implements exponential weighted moving average of sensor readings,
 /// including exponentially fading minimum and maximum
@@ -381,7 +394,7 @@ impl SensorValueTracker {
             local_min: core::f64::NAN,
             local_max: core::f64::NAN,
             average: core::f64::NAN,
-            alpha: alpha
+            alpha: alpha,
         }
     }
 
@@ -395,31 +408,39 @@ impl SensorValueTracker {
             range = 1.0;
         }
 
-        if range < 0.0 { -range }
-        else { range }
+        if range < 0.0 {
+            -range
+        } else {
+            range
+        }
     }
 
     pub fn update(&mut self, new_value: f64) -> f64 {
         //seed the EMWA with the initial value
-        if self.local_min.is_nan() { self.local_min = new_value; }
-        if self.local_max.is_nan() { self.local_max = new_value; }
-        if self.average.is_nan() { self.average = new_value; }
+        if self.local_min.is_nan() {
+            self.local_min = new_value;
+        }
+        if self.local_max.is_nan() {
+            self.local_max = new_value;
+        }
+        if self.average.is_nan() {
+            self.average = new_value;
+        }
 
         self.average = (self.alpha * new_value) + (1.0 - self.alpha) * self.average;
 
         // extrema fade toward average
-        if new_value > self.local_max { self.local_max = new_value; }
-        else if new_value > self.average {
+        if new_value > self.local_max {
+            self.local_max = new_value;
+        } else if new_value > self.average {
             self.local_max = (self.alpha * new_value) + (1.0 - self.alpha) * self.local_max;
         }
-        if new_value < self.local_min { self.local_min = new_value; }
-        else if new_value < self.average {
+        if new_value < self.local_min {
+            self.local_min = new_value;
+        } else if new_value < self.average {
             self.local_min = (self.alpha * new_value) + (1.0 - self.alpha) * self.local_min;
         }
 
         self.average
     }
-
 }
-
-
