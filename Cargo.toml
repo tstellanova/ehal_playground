@@ -16,17 +16,13 @@ cortex-m-log = { version = "0.6.1", features = ["log-integration", "itm", "semih
 rand_core = "0.5.1"
 
 shared-bus = {version = "0.1.4", features = ["cortexm"] }
-ssd1306 = "0.2.6"
-embedded-graphics = "0.4.9"
+#ssd1306 = "0.2.6"
+#embedded-graphics = "0.4.9"
 arrayvec = {version = "0.5.1", default-features = false}
 
 
-
-bno080 = { path = "../BNO080" }
-#bno080 = { git = "https://github.com/tstellanova/bno080.git" }
-bmp280-ehal = "0.0.3"
-em7180 = { git = "https://github.com/tstellanova/em7180-rs" }
-
+#ublox-core = "0.1.0"
+ublox-core =  { git = "https://github.com/tstellanova/ublox-core" }
 
 # stm32 family specialization:
 stm32h7 = { version = "0.10.0", features = ["stm32h743"], optional = true}
@@ -42,12 +38,12 @@ stm32f4xx-hal = { path = "../stm32f4xx-hal", features = ["stm32f407", "rt"], opt
 
 stm32f3 = {version = "0.10.0", features = ["stm32f303"], optional=true}
 #stm32f3xx-hal = { git = "https://github.com/stm32-rs/stm32f3xx-hal",  features = ["stm32f334", "rt"], optional=true}
-#stm32f3xx-hal = { git = "https://github.com/stm32-rs/stm32f3xx-hal",  features = ["stm32f303", "rt"], optional=true}
-stm32f3xx-hal = { path = "../stm32f3xx-hal",  features = ["stm32f303", "rt"], optional=true}
+stm32f3xx-hal = { git = "https://github.com/stm32-rs/stm32f3xx-hal",  features = ["stm32f303xc", "rt"], optional=true}
+#stm32f3xx-hal = { path = "../stm32f3xx-hal",  features = ["stm32f303", "rt"], optional=true}
 
 # to select a stm32 family, use one of the following as the default
 [features]
-default = ["stm32h7x"]
+default = ["stm32f3x"]
 stm32f3x = [ "stm32f3", "stm32f3xx-hal"]
 stm32f4x = [ "stm32f4", "stm32f4xx-hal"]
 stm32h7x = ["stm32h7", "stm32h7xx-hal"]
